@@ -13,8 +13,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY . .
+# Copy application code (excluding .env to avoid exposing secrets)
+COPY app.py .
+COPY templates/ templates/
+COPY .env.example .env.example
 
 # Create temp directory
 RUN mkdir -p temp

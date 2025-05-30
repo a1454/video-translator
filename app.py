@@ -6,22 +6,35 @@ from werkzeug.utils import secure_filename
 import subprocess
 import whisper
 from openai import OpenAI
+from dotenv import load_dotenv
 # Removed gTTS import - using OpenAI TTS instead
 import logging
 
+# Load environment variables
+load_dotenv()
+
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max file size
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH', 500 * 1024 * 1024))  # Default 500MB
 app.config['UPLOAD_FOLDER'] = 'temp'
 
 # Create temp directory if it doesn't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# Initialize models
-whisper_model = whisper.load_model("base")
-client = OpenAI(api_key="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")
+# Configuration from environment variables
+WHISPER_MODE = os.getenv('WHISPER_MODE', 'local')  # 'local' or 'api'
+WHISPER_MODEL_SIZE = os.getenv('WHISPER_MODEL_SIZE', 'base')
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Initialize models based on configuration
+whisper_model = None
+if WHISPER_MODE == 'local':
+    logger.info(f"Loading local Whisper model: {WHISPER_MODEL_SIZE}")
+    whisper_model = whisper.load_model(WHISPER_MODEL_SIZE)
+
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 @app.route('/')
 def index():
@@ -122,8 +135,25 @@ def extract_audio_from_video(video_path, output_dir):
         raise Exception(f"Failed to extract audio: {str(e)}")
 
 def audio_to_text(audio_path):
-    result = whisper_model.transcribe(audio_path)
-    return result["text"]
+    """Convert audio to text using either local Whisper or OpenAI API"""
+    if WHISPER_MODE == 'local':
+        if whisper_model is None:
+            raise Exception("Local Whisper model not loaded")
+        result = whisper_model.transcribe(audio_path)
+        return result["text"]
+    elif WHISPER_MODE == 'api':
+        try:
+            with open(audio_path, 'rb') as audio_file:
+                transcript = client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_file
+                )
+            return transcript.text
+        except Exception as e:
+            logger.error(f"OpenAI Whisper API error: {str(e)}")
+            raise Exception(f"Failed to transcribe audio via API: {str(e)}")
+    else:
+        raise Exception(f"Invalid WHISPER_MODE: {WHISPER_MODE}. Must be 'local' or 'api'")
 
 def translate_text(text, target_language):
     # Map language codes to full language names
