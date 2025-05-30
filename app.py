@@ -3,9 +3,9 @@ import tempfile
 import uuid
 from flask import Flask, request, render_template, send_file, jsonify
 from werkzeug.utils import secure_filename
-import yt_dlp
+import subprocess
 import whisper
-from googletrans import Translator
+from openai import OpenAI
 from gtts import gTTS
 import logging
 
@@ -18,7 +18,7 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Initialize models
 whisper_model = whisper.load_model("base")
-translator = Translator()
+client = OpenAI(api_key="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")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -30,21 +30,26 @@ def index():
 @app.route('/process', methods=['POST'])
 def process_video():
     try:
-        data = request.json
-        youtube_url = data.get('youtube_url')
-        target_language = data.get('target_language', 'es')
+        # Check if file was uploaded
+        if 'video_file' not in request.files:
+            return jsonify({'error': 'No video file uploaded'}), 400
         
-        if not youtube_url:
-            return jsonify({'error': 'YouTube URL is required'}), 400
+        file = request.files['video_file']
+        target_language = request.form.get('target_language', 'es')
+        
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
         
         # Generate unique session ID
         session_id = str(uuid.uuid4())
         temp_dir = os.path.join(app.config['UPLOAD_FOLDER'], session_id)
         os.makedirs(temp_dir, exist_ok=True)
         
-        # Step 1: Extract audio from YouTube
-        logger.info(f"Extracting audio from: {youtube_url}")
-        audio_path = extract_audio_from_youtube(youtube_url, temp_dir)
+        # Step 1: Save uploaded file and extract audio
+        logger.info(f"Processing uploaded file: {file.filename}")
+        video_path = os.path.join(temp_dir, secure_filename(file.filename))
+        file.save(video_path)
+        audio_path = extract_audio_from_video(video_path, temp_dir)
         
         # Step 2: Convert audio to text using Whisper
         logger.info("Converting audio to text...")
@@ -84,40 +89,80 @@ def download_file(session_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-def extract_audio_from_youtube(url, output_dir):
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'wav',
-            'preferredquality': '192',
-        }],
-        'outtmpl': os.path.join(output_dir, 'audio.%(ext)s'),
-        'extractor_args': {
-            'youtube': {
-                'player_client': ['android', 'web']
-            }
-        }
-    }
+def extract_audio_from_video(video_path, output_dir):
+    """Extract audio from uploaded video file using FFmpeg"""
+    audio_output_path = os.path.join(output_dir, 'audio.wav')
     
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
-    
-    return os.path.join(output_dir, 'audio.wav')
+    try:
+        # Use FFmpeg to extract audio from video
+        cmd = [
+            'ffmpeg', 
+            '-i', video_path,           # Input video file
+            '-vn',                      # No video output
+            '-acodec', 'pcm_s16le',     # Audio codec: 16-bit PCM
+            '-ar', '16000',             # Sample rate: 16kHz (good for Whisper)
+            '-ac', '1',                 # Mono audio
+            '-y',                       # Overwrite output file
+            audio_output_path
+        ]
+        
+        logger.info("Extracting audio from video using FFmpeg...")
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        logger.info("Audio extraction completed successfully")
+        
+        return audio_output_path
+        
+    except subprocess.CalledProcessError as e:
+        logger.error(f"FFmpeg error: {e.stderr}")
+        raise Exception(f"Failed to extract audio from video: {e.stderr}")
+    except FileNotFoundError:
+        raise Exception("FFmpeg not found. Please install FFmpeg to process video files.")
+    except Exception as e:
+        logger.error(f"Unexpected error during audio extraction: {str(e)}")
+        raise Exception(f"Failed to extract audio: {str(e)}")
 
 def audio_to_text(audio_path):
     result = whisper_model.transcribe(audio_path)
     return result["text"]
 
 def translate_text(text, target_language):
-    # Map language codes for compatibility
+    # Map language codes to full language names
     lang_map = {
-        'zh': 'zh-cn',  # Chinese simplified
-        'pt': 'pt-br',  # Portuguese Brazilian
+        'es': 'Spanish',
+        'fr': 'French', 
+        'de': 'German',
+        'it': 'Italian',
+        'pt': 'Portuguese',
+        'ru': 'Russian',
+        'ja': 'Japanese',
+        'ko': 'Korean',
+        'zh': 'Chinese',
+        'ar': 'Arabic',
+        'hi': 'Hindi'
     }
-    dest_lang = lang_map.get(target_language, target_language)
-    translated = translator.translate(text, dest=dest_lang)
-    return translated.text
+    
+    target_lang_name = lang_map.get(target_language, target_language)
+    
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"You are a professional translator. Translate the following text to {target_lang_name}. Only return the translated text, no explanations or additional content."
+                },
+                {
+                    "role": "user",
+                    "content": text
+                }
+            ],
+            max_tokens=2000,
+            temperature=0.3
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        logger.error(f"OpenAI translation error: {str(e)}")
+        raise e
 
 def text_to_speech(text, language, output_dir):
     tts = gTTS(text=text, lang=language, slow=False)

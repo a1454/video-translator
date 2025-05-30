@@ -32,7 +32,7 @@
             font-weight: bold;
             color: #555;
         }
-        input[type="url"], select {
+        input[type="file"], select {
             width: 100%;
             padding: 12px;
             border: 1px solid #ddd;
@@ -116,16 +116,16 @@
 </head>
 <body>
     <div class="container">
-        <h1>YouTube Audio Translator</h1>
+        <h1>Video Audio Translator</h1>
         <p style="text-align: center; color: #666; margin-bottom: 30px;">
-            Extract audio from YouTube videos, transcribe to text, translate to another language, and convert back to speech.
+            Upload a video file, transcribe to text, translate to another language, and convert back to speech.
         </p>
         
-        <form id="translationForm">
+        <form id="translationForm" enctype="multipart/form-data">
             <div class="form-group">
-                <label for="youtube_url">YouTube URL:</label>
-                <input type="url" id="youtube_url" name="youtube_url" required 
-                       placeholder="https://www.youtube.com/watch?v=...">
+                <label for="video_file">Video File:</label>
+                <input type="file" id="video_file" name="video_file" required 
+                       accept="video/*,audio/*" style="padding: 8px;">
             </div>
             
             <div class="form-group">
@@ -180,10 +180,9 @@
         document.getElementById('translationForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
-            const formData = {
-                youtube_url: document.getElementById('youtube_url').value,
-                target_language: document.getElementById('target_language').value
-            };
+            const formData = new FormData();
+            formData.append('video_file', document.getElementById('video_file').files[0]);
+            formData.append('target_language', document.getElementById('target_language').value);
             
             // Show progress, hide result and error
             document.getElementById('progress').style.display = 'block';
@@ -202,10 +201,7 @@
             try {
                 const response = await fetch('/process', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(formData)
+                    body: formData
                 });
                 
                 const result = await response.json();

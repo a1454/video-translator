@@ -6,7 +6,7 @@ A web application that extracts audio from YouTube videos, transcribes it to tex
 
 - Extract audio from YouTube videos using yt-dlp
 - Convert speech to text using OpenAI Whisper
-- Translate text to multiple languages using Google Translate
+- Translate text to multiple languages using OpenAI GPT-3.5 Turbo
 - Convert translated text to speech using gTTS
 - Download the final translated audio as MP3
 - Web interface for easy usage
@@ -83,7 +83,18 @@ docker run -p 5000:5000 youtube-translator
 
 ## Environment Variables
 
-No special environment variables required for basic functionality.
+**Required:**
+- `OPENAI_API_KEY` - Your OpenAI API key for GPT-3.5 Turbo translation
+
+**Setup:**
+```bash
+export OPENAI_API_KEY="your_openai_api_key_here"
+```
+
+Or create a `.env` file:
+```
+OPENAI_API_KEY=your_openai_api_key_here
+```
 
 ## Limitations
 
