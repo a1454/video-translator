@@ -6,7 +6,7 @@ from werkzeug.utils import secure_filename
 import subprocess
 import whisper
 from openai import OpenAI
-from gtts import gTTS
+# Removed gTTS import - using OpenAI TTS instead
 import logging
 
 app = Flask(__name__)
@@ -61,7 +61,7 @@ def process_video():
         
         # Step 4: Convert translated text to speech
         logger.info("Converting translated text to speech...")
-        output_mp3_path = text_to_speech(translated_text, target_language, temp_dir)
+        text_to_speech(translated_text, target_language, temp_dir)
         
         return jsonify({
             'success': True,
@@ -165,10 +165,45 @@ def translate_text(text, target_language):
         raise e
 
 def text_to_speech(text, language, output_dir):
-    tts = gTTS(text=text, lang=language, slow=False)
+    """Convert text to speech using OpenAI TTS API"""
     output_path = os.path.join(output_dir, 'output.mp3')
-    tts.save(output_path)
-    return output_path
+    
+    # Map language codes to appropriate voices
+    voice_map = {
+        'es': 'nova',    # Spanish - female voice
+        'fr': 'alloy',   # French - neutral voice
+        'de': 'echo',    # German - male voice
+        'it': 'fable',   # Italian - female voice
+        'pt': 'nova',    # Portuguese - female voice
+        'ru': 'onyx',    # Russian - male voice
+        'ja': 'shimmer', # Japanese - female voice
+        'ko': 'alloy',   # Korean - neutral voice
+        'zh': 'nova',    # Chinese - female voice
+        'ar': 'fable',   # Arabic - female voice
+        'hi': 'echo'     # Hindi - male voice
+    }
+    
+    voice = voice_map.get(language, 'alloy')  # Default to alloy voice
+    
+    try:
+        logger.info(f"Generating speech with OpenAI TTS using voice: {voice}")
+        response = client.audio.speech.create(
+            model="tts-1",  # Use tts-1 for faster generation, tts-1-hd for higher quality
+            voice=voice,
+            input=text,
+            response_format="mp3"
+        )
+        
+        # Save the audio file
+        with open(output_path, 'wb') as f:
+            f.write(response.content)
+        
+        logger.info("Speech generation completed successfully")
+        return output_path
+        
+    except Exception as e:
+        logger.error(f"OpenAI TTS error: {str(e)}")
+        raise Exception(f"Failed to generate speech: {str(e)}")
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
