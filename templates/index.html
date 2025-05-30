@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Audio Translator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="url"], select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .progress {
+            display: none;
+            margin-top: 20px;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background-color: #007bff;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        .result {
+            display: none;
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            border: 1px solid #e9ecef;
+        }
+        .text-section {
+            margin-bottom: 20px;
+        }
+        .text-section h3 {
+            margin-bottom: 10px;
+            color: #555;
+        }
+        .text-content {
+            background-color: white;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+            min-height: 50px;
+            line-height: 1.4;
+        }
+        .download-btn {
+            background-color: #28a745;
+            margin-top: 20px;
+        }
+        .download-btn:hover {
+            background-color: #218838;
+        }
+        .error {
+            color: #dc3545;
+            background-color: #f8d7da;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>YouTube Audio Translator</h1>
+        <p style="text-align: center; color: #666; margin-bottom: 30px;">
+            Extract audio from YouTube videos, transcribe to text, translate to another language, and convert back to speech.
+        </p>
+        
+        <form id="translationForm">
+            <div class="form-group">
+                <label for="youtube_url">YouTube URL:</label>
+                <input type="url" id="youtube_url" name="youtube_url" required 
+                       placeholder="https://www.youtube.com/watch?v=...">
+            </div>
+            
+            <div class="form-group">
+                <label for="target_language">Target Language:</label>
+                <select id="target_language" name="target_language">
+                    <option value="es">Spanish</option>
+                    <option value="fr">French</option>
+                    <option value="de">German</option>
+                    <option value="it">Italian</option>
+                    <option value="pt">Portuguese</option>
+                    <option value="ru">Russian</option>
+                    <option value="ja">Japanese</option>
+                    <option value="ko">Korean</option>
+                    <option value="zh">Chinese</option>
+                    <option value="ar">Arabic</option>
+                    <option value="hi">Hindi</option>
+                </select>
+            </div>
+            
+            <button type="submit" id="processBtn">Process Video</button>
+        </form>
+        
+        <div class="progress" id="progress">
+            <p>Processing your video... This may take a few minutes.</p>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+        </div>
+        
+        <div class="error" id="error"></div>
+        
+        <div class="result" id="result">
+            <div class="text-section">
+                <h3>Original Text:</h3>
+                <div class="text-content" id="originalText"></div>
+            </div>
+            
+            <div class="text-section">
+                <h3>Translated Text:</h3>
+                <div class="text-content" id="translatedText"></div>
+            </div>
+            
+            <button class="download-btn" id="downloadBtn" onclick="downloadAudio()">
+                Download Translated Audio (MP3)
+            </button>
+        </div>
+    </div>
+
+    <script>
+        let downloadUrl = '';
+
+        document.getElementById('translationForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = {
+                youtube_url: document.getElementById('youtube_url').value,
+                target_language: document.getElementById('target_language').value
+            };
+            
+            // Show progress, hide result and error
+            document.getElementById('progress').style.display = 'block';
+            document.getElementById('result').style.display = 'none';
+            document.getElementById('error').style.display = 'none';
+            document.getElementById('processBtn').disabled = true;
+            
+            // Animate progress bar
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                progress += Math.random() * 10;
+                if (progress > 90) progress = 90;
+                document.getElementById('progressFill').style.width = progress + '%';
+            }, 500);
+            
+            try {
+                const response = await fetch('/process', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(formData)
+                });
+                
+                const result = await response.json();
+                
+                clearInterval(progressInterval);
+                document.getElementById('progressFill').style.width = '100%';
+                
+                if (result.success) {
+                    // Show results
+                    document.getElementById('originalText').textContent = result.original_text;
+                    document.getElementById('translatedText').textContent = result.translated_text;
+                    downloadUrl = result.audio_file;
+                    
+                    document.getElementById('progress').style.display = 'none';
+                    document.getElementById('result').style.display = 'block';
+                } else {
+                    showError(result.error || 'An error occurred');
+                }
+                
+            } catch (error) {
+                clearInterval(progressInterval);
+                showError('Network error: ' + error.message);
+            }
+            
+            document.getElementById('processBtn').disabled = false;
+        });
+        
+        function showError(message) {
+            document.getElementById('progress').style.display = 'none';
+            document.getElementById('error').textContent = message;
+            document.getElementById('error').style.display = 'block';
+        }
+        
+        function downloadAudio() {
+            if (downloadUrl) {
+                window.open(downloadUrl, '_blank');
+            }
+        }
+    </script>
+</body>
+</html>
